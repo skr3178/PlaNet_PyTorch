@@ -1,0 +1,16 @@
+name: planet_pytorch
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.9
+  - pytorch=1.12.1
+  - numpy>=1.19.0,<2.0.0
+  - matplotlib>=3.3.0
+  - pip
+  - pip:
+    - dm_control>=1.0.0
+    - gym>=0.17.0,<0.26.0
+    - opencv-python>=4.5.0
+    - tensorboard>=2.4.0
+

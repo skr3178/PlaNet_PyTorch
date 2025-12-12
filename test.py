@@ -53,7 +53,7 @@ def main():
                          args.horizon, args.N_iterations,
                          args.N_candidates, args.N_top_candidates)
 
-    # test learnged model in the environment
+    # test learned model in the environment
     for episode in range(args.episodes):
         cem_agent.reset()
         obs = env.reset()
