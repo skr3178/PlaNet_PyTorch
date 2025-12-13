@@ -21,10 +21,53 @@ dir should be log_dir of train.py and you need to specify environment correspond
 
 
 ## Requirements
-* Python3
+* Python 3.9
 * Mujoco (for DeepMind Control Suite)
 
-and see requirements.txt for required python library
+### Installation
+
+1. Create a conda environment:
+```bash
+conda create -n planet_pytorch python=3.9
+conda activate planet_pytorch
+```
+
+2. Install mujoco and pyopengl via conda (required for compatibility):
+```bash
+conda install -c conda-forge mujoco=3.3.2 pyopengl=3.1.10
+```
+
+3. Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Apply compatibility patch for dm_control:
+```bash
+python3 << 'EOF'
+import re
+
+file_path = '/home/skr/miniconda3/envs/planet_pytorch/lib/python3.9/site-packages/dm_control/mujoco/index.py'
+
+with open(file_path, 'r') as f:
+    content = f.read()
+
+# Replace the getattr line to handle missing attributes
+old_pattern = r'    # Skip over structured arrays and fields that have sizes but aren\'t numpy\n    # arrays, such as text fields and contacts \(b/34805932\)\.\n    attr = getattr\(struct, field_name\)'
+new_pattern = r'    # Skip over structured arrays and fields that have sizes but aren\'t numpy\n    # arrays, such as text fields and contacts (b/34805932).\n    # Also skip fields that don\'t exist in this mujoco version\n    try:\n      attr = getattr(struct, field_name)\n    except AttributeError:\n      continue'
+
+content = re.sub(old_pattern, new_pattern, content)
+
+with open(file_path, 'w') as f:
+    f.write(content)
+
+print("Patched index.py successfully")
+EOF
+```
+
+**Note:** Replace `/home/skr/miniconda3/envs/planet_pytorch` with your actual conda environment path.
+
+See `requirements.txt` for exact package versions.
 
 ## Qualitative tesult
 Example of predicted video frame by learned model

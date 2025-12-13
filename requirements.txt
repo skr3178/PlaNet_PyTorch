@@ -1,7 +1,32 @@
-dm_control
-gym
-opencv-python
-matplotlib
-numpy
-tensorboard
-torch
+# Core dependencies
+dm-control==1.0.11
+dm-env==1.6
+dm-tree==0.1.8
+gym==0.26.2
+opencv-python==4.12.0.88
+matplotlib==3.9.4
+numpy==1.26.4
+tensorboard==2.20.0
+torch==2.5.1
+protobuf==6.33.2
+absl-py==2.3.1
+grpcio==1.76.0
+markdown==3.9
+werkzeug==3.1.4
+tensorboard-data-server==0.7.2
+requests==2.32.5
+scipy==1.13.1
+lxml==6.0.2
+glfw==2.10.0
+labmaze==1.0.6
+
+# Note: The following packages should be installed via conda for compatibility:
+# conda install -c conda-forge mujoco=3.3.2 pyopengl=3.1.10
+# 
+# Specifically:
+# - mujoco==3.3.2 (and related: mujoco-python, mujoco-samples, mujoco-simulate, libmujoco)
+# - pyopengl==3.1.10
+#
+# Important: dm-control 1.0.11 is required for compatibility with mujoco 3.3.2
+# A patch is also needed for dm_control/mujoco/index.py to handle missing attributes
+# See the installation notes for details

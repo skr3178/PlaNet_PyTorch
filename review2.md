@@ -384,3 +384,34 @@ If you remove the KL divergence from the ELBO, reconstruction becomes perfect bu
 That is why **every single successful world model** (DreamerV2, DreamerV3, PlaNet, MuZero with images, IRIS, etc.) **always** keeps the KL term (and usually makes it stronger with overshooting).
 
 You cannot remove it. Period.
+
+
+1. Why Reward Loss is Considered
+The reward loss is included because PlaNet learns a reward model p(r_t | s_t) that is used for planning.
+Purpose of the reward model:
+Planning: The agent uses p(r_t | s_t) to predict future rewards when selecting actions via CEM/MPC.
+State representation: Learning to predict rewards from latent states encourages the latent space to capture reward-relevant information.
+Model completeness: The world model includes:
+Transition model: p(s_t | s_{t-1}, a_{t-1})
+Observation model: p(o_t | s_t)
+Reward model: p(r_t | s_t)
+Extended ELBO:
+The full objective includes both observation and reward reconstruction:
+ELBO = Σ_t [E_q[ln p(o_t | s_t)] + E_q[ln p(r_t | s_t)] - KL term]
+Both p(o_t | s_t) and p(r_t | s_t) are decoders that reconstruct/predict from the latent state, so both are trained via reconstruction loss.
+2. The 0.5 Factor for Log-Likelihood
+The 0.5 factor comes from the Gaussian negative log-likelihood when variance is fixed (often σ² = 1).
+Mathematical Derivation:
+For a Gaussian distribution:
+p(x | μ, σ²) = (1/√(2πσ²)) * exp(-(x-μ)²/(2σ²))
+Taking the negative log-likelihood:
+-ln p(x | μ, σ²) = 0.5 * ln(2πσ²) + 0.5 * (x-μ)²/σ²
+If we assume fixed variance σ² = 1 (common in practice):
+)
+-ln p(x | μ, 1) = 0.5 * ln(2π) + 0.5 * (x-μ)²                = constant + 0.5 * MSE(x, μ)
+In the Code:
+obs_loss = 0.5 * mse_loss(recon_observations[1:], observations[1:], ...)reward_loss = 0.5 * mse_loss(predicted_rewards[1:], rewards[:-1])
+
+Maximizing log-likelihood is equivalent to minimizing negative log-likelihood.
+With fixed variance, minimizing 0.5 * MSE is equivalent to maximizing the Gaussian log-likelihood.
+The constant 0.5 * ln(2π) doesn't affect gradients, so it's omitted.

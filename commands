@@ -1,0 +1,13 @@
+#  For SSM:
+
+cd /home/skr/Downloads/robot_world/PlaNet_PyTorch
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate planet_pytorch
+nohup python3 train_SSM.py > training_ssm_output.log 2>&1 &
+
+
+#  For Deterministic:
+cd /home/skr/Downloads/robot_world/PlaNet_PyTorch
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate planet_pytorch
+nohup python3 train_deterministic.py > training_deterministic_output.log 2>&1 &
