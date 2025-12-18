@@ -22,17 +22,36 @@ python3 test.py dir
 ```
 
 To predict video with learned model, run
-```python
-python3 video_prediction.py dir
+```bash
+python3 video_prediction.py log/cheetah_run/20251213_070630
 ```
 
 To predict video with learned deterministic model, run
-```python
-python3 video_prediction_deterministic.py dir
+```bash
+python3 video_prediction_deterministic.py log/cheetah_run/20251217_104737
 ```
-dir should be log_dir of train.py and you need to specify environment corresponding to the log by arguments.
 
-**Note:** The deterministic model has been successfully trained and tested.
+**Video Prediction Options:**
+- `dir` - Log directory or checkpoint directory (required)
+- `--length` - Length of video prediction in steps (default: 50)
+- `--domain-name` - Environment domain (default: cheetah)
+- `--task-name` - Environment task (default: run)
+- `--action-repeat` - Action repeat factor (default: 4)
+- `--output` - Output filename for the GIF (default: `video_prediction.gif` or `video_prediction_deterministic.gif`)
+- `--action-noise` - Action noise variance for exploration (default: 0.3)
+
+**Examples:**
+```bash
+# Generate GIF with PlaNet model (episode 800 checkpoint)
+python3 video_prediction.py log/cheetah_run/20251213_070630/checkpoint_ep800 --length 100 --output my_prediction.gif
+
+# Generate GIF with deterministic model (episode 600 checkpoint)
+python3 video_prediction_deterministic.py log/cheetah_run/20251217_104737/checkpoint_ep600 --length 100 --output deterministic_prediction.gif
+```
+
+The script will automatically find the checkpoint files and generate a GIF showing ground truth observations (left) vs. model predictions (right) side-by-side.
+
+**Note:** The deterministic model has been successfully trained and tested. Both model checkpoints are available in the repository.
 
 
 
