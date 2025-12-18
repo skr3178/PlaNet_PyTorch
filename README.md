@@ -7,6 +7,15 @@ For training, install the requirements (see below) and run (default environment 
 python3 train.py
 ```
 
+For training the deterministic model variant, run
+```bash
+bash run_train_deterministic.sh
+```
+or
+```python
+python3 train_deterministic.py
+```
+
 To test learned model, run
 ```python
 python3 test.py dir
@@ -16,7 +25,14 @@ To predict video with learned model, run
 ```python
 python3 video_prediction.py dir
 ```
+
+To predict video with learned deterministic model, run
+```python
+python3 video_prediction_deterministic.py dir
+```
 dir should be log_dir of train.py and you need to specify environment corresponding to the log by arguments.
+
+**Note:** The deterministic model has been successfully trained and tested.
 
 
 

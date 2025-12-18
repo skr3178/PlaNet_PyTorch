@@ -9,3 +9,10 @@ echo "Monitor with: tail -f training_deterministic_output.log"
 echo "Check process: ps aux | grep train_deterministic.py"
 echo "Monitor resources: htop (in another terminal)"
 echo "Kill process: kill $!"
+
+
+
+
+
+
+

@@ -8,6 +8,7 @@ import time
 import numpy as np
 import torch
 from torch.distributions.kl import kl_divergence
+from torch.distributions import Normal
 from torch.nn.functional import mse_loss
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adam
@@ -59,7 +60,17 @@ def main():
     parser.add_argument('--action-noise-var', type=float, default=0.3)
     parser.add_argument('--checkpoint-interval', type=int, default=100,
                         help='Save checkpoint every N episodes')
+    parser.add_argument('--overshooting-distance', type=int, default=0,
+                        help='Latent overshooting distance (0 to disable)')
+    parser.add_argument('--overshooting-kl-beta', type=float, default=0.0,
+                        help='Latent overshooting KL weight (0 to disable)')
+    parser.add_argument('--overshooting-reward-scale', type=float, default=0.0,
+                        help='Latent overshooting reward prediction weight (0 to disable)')
     args = parser.parse_args()
+    
+    # Ensure overshooting distance doesn't exceed chunk length
+    if args.overshooting_distance > 0:
+        args.overshooting_distance = min(args.chunk_length - 1, args.overshooting_distance)
 
     # Prepare logging
     log_dir = os.path.join(args.log_dir, args.domain_name + '_' + args.task_name)
@@ -172,6 +183,16 @@ def main():
             state = torch.zeros(args.batch_size, args.state_dim, device=device)
             rnn_hidden = torch.zeros(args.batch_size, args.rnn_hidden_dim, device=device)
 
+            # Store posterior distributions for overshooting (if enabled)
+            posterior_means = torch.zeros(
+                args.chunk_length, args.batch_size, args.state_dim, device=device)
+            posterior_std_devs = torch.zeros(
+                args.chunk_length, args.batch_size, args.state_dim, device=device)
+            posterior_states = torch.zeros(
+                args.chunk_length, args.batch_size, args.state_dim, device=device)
+            prior_means_list = []
+            prior_std_devs_list = []
+
             # compute state and rnn hidden sequences and kl loss
             # the KL loss is computed between the prior and posterior of the state
             # - E_{q(s_{t-1}|o_{≤t-1}, a_{<t-1})} [KL[q(s_t | o_{≤t}, a_{<t}) || p(s_t | s_{t-1}, a_{t-1})]] 
@@ -184,6 +205,15 @@ def main():
                 state = next_state_posterior.rsample()
                 states[l+1] = state
                 rnn_hiddens[l+1] = rnn_hidden
+                
+                # Store posterior distributions for overshooting
+                if args.overshooting_kl_beta != 0 or args.overshooting_reward_scale != 0:
+                    posterior_means[l+1] = next_state_posterior.mean
+                    posterior_std_devs[l+1] = next_state_posterior.stddev
+                    posterior_states[l+1] = state.detach()  # Detach for overshooting
+                    prior_means_list.append(next_state_prior.mean)
+                    prior_std_devs_list.append(next_state_prior.stddev)
+                
                 kl = kl_divergence(next_state_prior, next_state_posterior).sum(dim=1)
                 kl_loss += kl.clamp(min=args.free_nats).mean()
             kl_loss /= (args.chunk_length - 1) # Normalize by the number of time steps
@@ -201,6 +231,85 @@ def main():
             obs_loss = 0.5 * mse_loss(
                 recon_observations[1:], observations[1:], reduction='none').mean([0, 1]).sum()
             reward_loss = 0.5 * mse_loss(predicted_rewards[1:], rewards[:-1])
+
+            # Calculate latent overshooting objective for t > 0
+            if (args.overshooting_kl_beta != 0 or args.overshooting_reward_scale != 0) and args.overshooting_distance > 0:
+                overshooting_kl_loss = torch.tensor(0.0, device=device)
+                overshooting_reward_loss = torch.tensor(0.0, device=device)
+                
+                # Process overshooting for each starting time step t
+                for t in range(1, args.chunk_length - 1):
+                    d = min(t + args.overshooting_distance, args.chunk_length - 1)  # Overshooting distance
+                    if d <= t:
+                        continue
+                    
+                    # Perform open-loop rollout from posterior at time t
+                    rollout_state = posterior_states[t].detach()
+                    rollout_rnn_hidden = rnn_hiddens[t].detach()
+                    rollout_length = d - t
+                    
+                    # Store priors from open-loop rollout
+                    rollout_prior_means = []
+                    rollout_prior_std_devs = []
+                    rollout_rnn_hiddens_seq = [rollout_rnn_hidden]
+                    
+                    for i in range(rollout_length):
+                        # Open-loop: use prior (no observation)
+                        next_prior, rollout_rnn_hidden = rssm.prior(
+                            rollout_state, actions[t + i], rollout_rnn_hidden)
+                        rollout_state = next_prior.rsample()
+                        rollout_prior_means.append(next_prior.mean)
+                        rollout_prior_std_devs.append(next_prior.stddev)
+                        rollout_rnn_hiddens_seq.append(rollout_rnn_hidden)
+                    
+                    # Stack into tensors: [rollout_length, batch_size, state_dim]
+                    prior_means_seq = torch.stack(rollout_prior_means)
+                    prior_std_devs_seq = torch.stack(rollout_prior_std_devs)
+                    target_means_seq = posterior_means[t+1:d+1].detach()
+                    target_std_devs_seq = posterior_std_devs[t+1:d+1].detach()
+                    
+                    # Compute KL divergence for overshooting
+                    if args.overshooting_kl_beta != 0:
+                        prior_dist = Normal(prior_means_seq, prior_std_devs_seq)
+                        target_dist = Normal(target_means_seq, target_std_devs_seq)
+                        
+                        # Compute KL: [rollout_length, batch_size]
+                        kl_overshooting = kl_divergence(target_dist, prior_dist).sum(dim=-1)
+                        # Apply free nats and average
+                        kl_overshooting = kl_overshooting.clamp(min=args.free_nats).mean()
+                        overshooting_kl_loss = overshooting_kl_loss + kl_overshooting
+                    
+                    # Compute reward prediction loss for overshooting
+                    if args.overshooting_reward_scale != 0:
+                        # Get RNN hidden states for reward prediction (exclude the last one)
+                        rollout_rnn_hiddens_for_reward = torch.stack(rollout_rnn_hiddens_seq[:-1])
+                        
+                        # Predict rewards from prior states
+                        prior_states_flat = prior_means_seq.view(-1, args.state_dim)
+                        rollout_rnn_hiddens_flat = rollout_rnn_hiddens_for_reward.view(-1, args.rnn_hidden_dim)
+                        predicted_rewards_overshooting = reward_model(
+                            prior_states_flat, rollout_rnn_hiddens_flat)
+                        predicted_rewards_overshooting = predicted_rewards_overshooting.view(
+                            rollout_length, args.batch_size, 1)
+                        
+                        # Target rewards
+                        target_rewards_seq = rewards[t:d]
+                        
+                        # Compute MSE loss
+                        reward_diff = (predicted_rewards_overshooting - target_rewards_seq) ** 2
+                        overshooting_reward_loss = overshooting_reward_loss + reward_diff.mean()
+                
+                # Normalize overshooting losses
+                num_overshooting_steps = max(0, args.chunk_length - 2)
+                if num_overshooting_steps > 0 and args.overshooting_distance > 0:
+                    overshooting_kl_loss = (1.0 / args.overshooting_distance) * args.overshooting_kl_beta * \
+                        overshooting_kl_loss * num_overshooting_steps
+                    overshooting_reward_loss = (1.0 / args.overshooting_distance) * args.overshooting_reward_scale * \
+                        overshooting_reward_loss * num_overshooting_steps
+                
+                # Add overshooting losses
+                kl_loss = kl_loss + overshooting_kl_loss
+                reward_loss = reward_loss + overshooting_reward_loss
 
             # add all losses and update model parameters with gradient descent
             loss = kl_loss + obs_loss + reward_loss
